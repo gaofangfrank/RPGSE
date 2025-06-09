@@ -1,0 +1,3 @@
+[submodule "qt-lzstring"]
+	path = qt-lzstring
+	url = https://github.com/AmiArt/qt-lzstring
