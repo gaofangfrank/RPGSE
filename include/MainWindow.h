@@ -1,3 +1,4 @@
+#include <QDir>
 #include <QJsonDocument>
 #include <QMainWindow>
 #include <QToolBar>
@@ -8,8 +9,21 @@ public:
   MainWindow(int argc, char **argv);
 
 private:
-  bool openFile(char *filename);
+  bool openFile(QString filename);
+  bool loadContext();
+
   QToolBar toolbar;
-  QJsonDocument decoded;
-  QString fileName;
+
+  // Json loaded from www/data
+  QJsonDocument actors;
+  QJsonDocument armors;
+  QJsonDocument classes;
+  QJsonDocument items;
+  QJsonDocument weapons;
+  QJsonDocument system;
+
+  QJsonDocument save;
+  QDir wwwDir;
+  QFile file;
+  QString errMsg;
 };
