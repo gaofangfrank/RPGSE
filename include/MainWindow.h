@@ -1,7 +1,13 @@
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
 #include <QDir>
-#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QMainWindow>
 #include <QToolBar>
+
+#include "SaveElements.h"
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -15,15 +21,21 @@ private:
   QToolBar toolbar;
 
   // Json loaded from www/data
-  QJsonDocument actors;
-  QJsonDocument armors;
-  QJsonDocument classes;
-  QJsonDocument items;
-  QJsonDocument weapons;
-  QJsonDocument system;
+  QJsonArray actors;
+  QJsonArray armors;
+  QJsonArray classes;
+  QJsonArray items;
+  QJsonArray weapons;
+  QJsonObject system;
 
-  QJsonDocument save;
+  QJsonObject save;
+  std::unique_ptr<SaveElements> elements;
+
   QDir wwwDir;
   QFile file;
   QString errMsg;
+
+  bool valid;
 };
+
+#endif

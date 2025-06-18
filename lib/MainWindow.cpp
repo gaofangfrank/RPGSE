@@ -1,7 +1,10 @@
 #include "MainWindow.h"
+
 #include "lzstring.h"
+
 #include <QDebug>
 #include <QFile>
+#include <QJsonDocument>
 
 static bool loadJsonFromFile(const QString &filename, QJsonDocument &json) {
   QFile file(filename);
@@ -18,6 +21,15 @@ static bool loadJsonFromFile(const QString &filename, QJsonDocument &json) {
   return true;
 }
 
+static bool parseArray(const QString &filename, QJsonArray &arr) {
+  QJsonDocument doc;
+  if (!loadJsonFromFile(filename, doc) || !doc.isArray())
+    return false;
+  else
+    arr = doc.array();
+  return true;
+}
+
 bool MainWindow::loadContext() {
   bool success = true;
   errMsg = "[loadContext] ";
@@ -27,18 +39,19 @@ bool MainWindow::loadContext() {
     errMsg.append("Cannot find data dir");
     return false;
   }
-  if (!loadJsonFromFile(dataDir.filePath("Actors.json"), this->actors))
+
+  success &= parseArray(dataDir.filePath("Actors.json"), this->actors);
+  success &= parseArray(dataDir.filePath("Armors.json"), this->armors);
+  success &= parseArray(dataDir.filePath("Classes.json"), this->classes);
+  success &= parseArray(dataDir.filePath("Items.json"), this->weapons);
+
+  QJsonDocument doc;
+  if (!loadJsonFromFile(dataDir.filePath("System.json"), doc) ||
+      !doc.isObject())
     success = false;
-  if (!loadJsonFromFile(dataDir.filePath("Armors.json"), this->armors))
-    success = false;
-  if (!loadJsonFromFile(dataDir.filePath("Classes.json"), this->classes))
-    success = false;
-  if (!loadJsonFromFile(dataDir.filePath("Items.json"), this->items))
-    success = false;
-  if (!loadJsonFromFile(dataDir.filePath("Weapons.json"), this->weapons))
-    success = false;
-  if (!loadJsonFromFile(dataDir.filePath("System.json"), this->system))
-    success = false;
+  else
+    this->system = doc.object();
+
   return success;
 }
 
@@ -51,16 +64,16 @@ bool MainWindow::openFile(QString filename) {
   while (fileInfo.isSymLink()) {
     fileInfo.setFile(fileInfo.symLinkTarget());
   }
-  file.setFileName(fileInfo.absoluteFilePath());
+  this->file.setFileName(fileInfo.absoluteFilePath());
   // If we cannot open file
-  if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+  if (!this->file.open(QIODevice::ReadOnly | QIODevice::Text)) {
     errMsg.append("Opening file failed: ");
     errMsg.append(filename);
     return false;
   }
   // Save the filename and decode into json
-  QByteArray encoded = file.readLine();
-  file.close();
+  QByteArray encoded = this->file.readLine();
+  this->file.close();
   QString decoded = LZString::decompressFromBase64(encoded);
 
   if (decoded.isEmpty()) {
@@ -69,12 +82,29 @@ bool MainWindow::openFile(QString filename) {
   }
 
   QByteArray rawDecoded = decoded.toUtf8();
+
+#ifndef NDEBUG
+  QFile decodeDump("decoded.json");
+  if (decodeDump.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    decodeDump.write(rawDecoded);
+    decodeDump.close();
+  } else
+    qDebug() << "Error opening decoded.json\n";
+#endif
+
   QJsonParseError error;
-  this->save = QJsonDocument::fromJson(rawDecoded, &error);
+  auto saveDoc = QJsonDocument::fromJson(rawDecoded, &error);
   if (error.error) {
     errMsg.append(error.errorString());
     return false;
   }
+  if (!saveDoc.isObject()) {
+    errMsg.append("Invalid save format");
+    return false;
+  }
+
+  this->save = saveDoc.object();
+  this->elements = std::make_unique<SaveElements>(this->save);
 
   QDir parentDir = fileInfo.dir();
   if (!parentDir.cdUp()) {
@@ -90,10 +120,12 @@ bool MainWindow::openFile(QString filename) {
     }
   }
 
+  this->valid = true;
+
   return true;
 }
 
-MainWindow::MainWindow(int argc, char **argv) : toolbar(this) {
+MainWindow::MainWindow(int argc, char **argv) : toolbar(this), valid(false) {
   addToolBar(Qt::ToolBarArea::LeftToolBarArea, &toolbar);
   toolbar.setMovable(false);
 
