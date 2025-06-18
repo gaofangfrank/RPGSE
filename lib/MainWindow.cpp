@@ -104,7 +104,6 @@ bool MainWindow::openFile(QString filename) {
   }
 
   this->save = saveDoc.object();
-  this->elements = std::make_unique<SaveElements>(this->save);
 
   QDir parentDir = fileInfo.dir();
   if (!parentDir.cdUp()) {
@@ -118,6 +117,12 @@ bool MainWindow::openFile(QString filename) {
       errMsg.append("Failed to load some or all data files");
       return false;
     }
+  }
+
+  this->elements = std::make_unique<SaveElements>(this->save, this->actors);
+  if (!elements->isValid()) {
+    errMsg.append("Invalid save format");
+    return false;
   }
 
   this->valid = true;
