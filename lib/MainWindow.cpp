@@ -4,29 +4,36 @@
 
 #include <QDebug>
 #include <QFile>
-#include <QJsonDocument>
 
-static bool loadJsonFromFile(const QString &filename, QJsonDocument &json) {
+template <typename JSONT,
+          typename = std::enable_if_t<std::is_same_v<JSONT, json::Object> ||
+                                      std::is_same_v<JSONT, json::Array>>>
+static bool loadJsonFromFile(const QString &filename, JSONT &json,
+                             QString &errMsg) {
   QFile file(filename);
   if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
     return false;
 
-  QByteArray line = file.readAll();
+  QByteArray data = file.readAll();
   file.close();
-  QJsonParseError error;
-  json = QJsonDocument::fromJson(line, &error);
-  if (error.error)
+  llvm::StringRef jsonStr(data.constData());
+  auto maybeObj = json::parse(jsonStr);
+  if (!maybeObj) {
+    if (handleErrors(maybeObj.takeError(), [&](const json::ParseError &pe) {
+          errMsg.append(pe.message().c_str());
+        }).success())
+      qDebug() << "handleError on parse somehow failed";
     return false;
+  }
 
-  return true;
-}
+  if constexpr (std::is_same<JSONT, json::Object>()) {
+    auto *obj = maybeObj->getAsObject();
+    json = std::move(*obj);
+  } else if constexpr (std::is_same<JSONT, json::Array>()) {
+    auto *arr = maybeObj->getAsArray();
+    json = std::move(*arr);
+  }
 
-static bool parseArray(const QString &filename, QJsonArray &arr) {
-  QJsonDocument doc;
-  if (!loadJsonFromFile(filename, doc) || !doc.isArray())
-    return false;
-  else
-    arr = doc.array();
   return true;
 }
 
@@ -40,17 +47,17 @@ bool MainWindow::loadContext() {
     return false;
   }
 
-  success &= parseArray(dataDir.filePath("Actors.json"), this->actors);
-  success &= parseArray(dataDir.filePath("Armors.json"), this->armors);
-  success &= parseArray(dataDir.filePath("Classes.json"), this->classes);
-  success &= parseArray(dataDir.filePath("Items.json"), this->weapons);
+  success &=
+      loadJsonFromFile(dataDir.filePath("Actors.json"), this->actors, errMsg);
+  success &=
+      loadJsonFromFile(dataDir.filePath("Armors.json"), this->armors, errMsg);
+  success &=
+      loadJsonFromFile(dataDir.filePath("Classes.json"), this->classes, errMsg);
+  success &=
+      loadJsonFromFile(dataDir.filePath("Items.json"), this->weapons, errMsg);
 
-  QJsonDocument doc;
-  if (!loadJsonFromFile(dataDir.filePath("System.json"), doc) ||
-      !doc.isObject())
+  if (!loadJsonFromFile(dataDir.filePath("System.json"), this->system, errMsg))
     success = false;
-  else
-    this->system = doc.object();
 
   return success;
 }
@@ -92,18 +99,22 @@ bool MainWindow::openFile(QString filename) {
     qDebug() << "Error opening decoded.json\n";
 #endif
 
-  QJsonParseError error;
-  auto saveDoc = QJsonDocument::fromJson(rawDecoded, &error);
-  if (error.error) {
-    errMsg.append(error.errorString());
-    return false;
-  }
-  if (!saveDoc.isObject()) {
-    errMsg.append("Invalid save format");
+  auto maybeSave = json::parse(rawDecoded.data());
+  if (!maybeSave) {
+    if (handleErrors(maybeSave.takeError(), [&](const json::ParseError &pe) {
+          errMsg.append(pe.message().c_str());
+        }).success())
+      qDebug() << "handleError on parse somehow failed";
     return false;
   }
 
-  this->save = saveDoc.object();
+  auto *saveObj = maybeSave->getAsObject();
+  if (!saveObj) {
+    errMsg.append("Expecting save file to be an json object");
+    return false;
+  }
+
+  this->save = std::move(*saveObj);
 
   QDir parentDir = fileInfo.dir();
   if (!parentDir.cdUp()) {
@@ -119,7 +130,8 @@ bool MainWindow::openFile(QString filename) {
     }
   }
 
-  this->elements = std::make_unique<SaveElements>(this->save, this->actors);
+  this->elements =
+      std::make_unique<SaveElements>(this->save, this->actors, this->system);
   if (!elements->isValid()) {
     errMsg.append("Invalid save format");
     return false;

@@ -1,63 +1,81 @@
 #ifndef SAVELEMENTS_H
 #define SAVELEMENTS_H
 
-#include <QJsonValueRef>
-class QJsonObject;
+#include "llvm/Support/JSON.h"
 
+#include <QMap>
+
+using namespace llvm;
 template <typename Derived> class SaveElement {
 public:
-  SaveElement() = delete;
-  SaveElement(QJsonValueRef val) : jsonObj(val), valid(!val.isNull()) {}
+  SaveElement() : valid(true) {}
 
   bool isValid() const { return valid; }
 
 protected:
   using Base = SaveElement<Derived>;
-  QJsonValueRef jsonObj;
   bool valid;
 };
+
+//=============================================================================
+// Actors
 class Actors : public SaveElement<Actors> {
 public:
-  Actors(QJsonValueRef val, const QJsonArray actorDefs);
+  Actors(json::Object &save, json::Array &actorDefs);
 
 private:
   struct ActorParams {
-    QString name;
-    int32_t hp;
-    int32_t mp;
-    int32_t level;
-    std::vector<std::pair<int, int32_t>> exp;
-    int32_t classId;
+    json::Value *name;
+    json::Value *hp;
+    json::Value *mp;
+    json::Value *level;
+    std::vector<std::pair<int, json::Value *>> exp;
+    json::Value *classId;
   };
-  std::unordered_map<int, ActorParams> params;
+  std::map<int, ActorParams> params;
 };
 
+//=============================================================================
+// Party
 class Party : public SaveElement<Party> {
 public:
-  Party(QJsonValueRef val);
+  Party(json::Object &save);
 
 private:
-  int32_t gold;
-  std::unordered_map<size_t, int32_t> itemCount;
-  std::unordered_map<size_t, int32_t> weaponCount;
-  std::unordered_map<size_t, int32_t> armorCount;
+  json::Value *gold;
+  std::unordered_map<size_t, json::Value *> itemCount;
+  std::unordered_map<size_t, json::Value *> weaponCount;
+  std::unordered_map<size_t, json::Value *> armorCount;
 };
 
+//=============================================================================
+// Variables
 class Variables : public SaveElement<Variables> {
 public:
-  Variables(QJsonValueRef val);
+  Variables(json::Object &save, json::Object &system);
+
+private:
+  QMap<QString, json::Value *> vars;
 };
 
+//=============================================================================
+// Switches
 class Switches : public SaveElement<Switches> {
 public:
-  Switches(QJsonValueRef val);
+  Switches(json::Object &save, json::Object &system);
+
+private:
+  QMap<QString, json::Value *> switches;
 };
 
+//=============================================================================
+// SaveElements
 class SaveElements {
 public:
   SaveElements() = delete;
-  SaveElements(QJsonObject save, const QJsonArray actorList);
-  bool reload(QJsonObject save, const QJsonArray actorList);
+  SaveElements(json::Object &save, json::Array &actorList,
+               json::Object &system);
+  bool reload(json::Object &save, json::Array &actorList, json::Object &system);
   bool isValid();
 
 private:
